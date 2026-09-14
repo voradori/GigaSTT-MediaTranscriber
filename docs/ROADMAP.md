@@ -6,7 +6,7 @@
 
 - [x] Установить Windows GigaSTT и модели; сохранить их локально вне Git.
 - [x] Перенести Python-команды и `yt-dlp`/EJS в одну `.venv`; проверить базовый сетап и YouTube `--simulate` из неё.
-- [ ] Завершить на этой машине `setup-diarization.cmd` после входа Hugging Face и проверить загрузку Community-1.
+- [x] Завершить на этой машине `setup-diarization.cmd` после входа Hugging Face и проверить локальную загрузку Community-1.
 - [x] Одним `transcribe.cmd` обработать пять OGG и большой MP3 из `input/` на CPU без Codex и Docker.
 - [x] Для каждого файла сохранить исходный `raw.json`, нормализованный `transcript.json` и читаемый `transcript.txt`.
 - [x] Пропускать готовые результаты без перезаписи; после ошибки позволять повторить файл.

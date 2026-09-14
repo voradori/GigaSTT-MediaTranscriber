@@ -64,7 +64,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $modelPath 'config.yaml'))) {
         $loggedIn = $false
     }
     if (-not $loggedIn) {
-        Write-Host 'Hugging Face login is required. Paste a read token when prompted.'
+        Write-Host 'Hugging Face login is required. Follow the device sign-in instructions shown below.'
         & $hfPath auth login
         if ($LASTEXITCODE -ne 0) { throw 'Hugging Face login failed' }
     }
