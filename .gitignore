@@ -5,10 +5,11 @@
 /temp/
 /logs/
 
-# Model and tool caches
+# Model, tool and machine-learning caches
 /models/
 /cache/
 /.cache/
+/.hf-cache/
 /DockerCache/
 /tools/
 
@@ -22,7 +23,7 @@
 # Python / editors / operating system
 __pycache__/
 *.py[cod]
-.venv/
+/.venv/
 .idea/
 .vscode/
 .DS_Store
