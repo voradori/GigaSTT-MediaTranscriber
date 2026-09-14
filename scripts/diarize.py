@@ -17,6 +17,10 @@ for stream in (sys.stdout, sys.stderr):
 
 
 def ffmpeg_bin_directory():
+    local = sorted((Path(__file__).resolve().parents[1] / "tools" / "ffmpeg").glob(
+        "ffmpeg-*/bin/ffmpeg.exe"), reverse=True)
+    if local:
+        return local[0].parent
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
         winget = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"

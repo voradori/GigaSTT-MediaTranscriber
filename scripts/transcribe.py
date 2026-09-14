@@ -19,7 +19,17 @@ OUTPUT = ROOT / "output" / "transcripts"
 ENGINE = ROOT / "tools" / "gigastt.exe"
 MODELS = ROOT / "models"
 FORMATS = {".ogg", ".opus", ".mp3", ".wav", ".m4a", ".flac", ".webm"}
-VIDEO = {".mp4"}
+VIDEO = {".mp4", ".mkv"}
+
+
+def ffmpeg_tool():
+    local = sorted((ROOT / "tools" / "ffmpeg").glob("ffmpeg-*/bin/ffmpeg.exe"), reverse=True)
+    if local:
+        return str(local[0])
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return executable
+    raise RuntimeError("ffmpeg is unavailable")
 
 
 def stamp(seconds):
@@ -83,14 +93,14 @@ def process(source):
     raw_file = target / "raw.json"
     started = time.monotonic()
     audio_source = source
-    temporary_audio = target / "extracting.m4a"
+    temporary_audio = target / ("extracting.wav" if source.suffix.lower() == ".mkv" else "extracting.m4a")
     print(f"PROCESS {source.name}", flush=True)
     try:
         if source.suffix.lower() in VIDEO:
-            if not shutil.which("ffmpeg"):
-                raise RuntimeError("ffmpeg is unavailable")
-            subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                            "-i", str(source), "-map", "0:a:0", "-vn", "-c:a", "copy",
+            audio_options = (["-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"]
+                             if source.suffix.lower() == ".mkv" else ["-c:a", "copy"])
+            subprocess.run([ffmpeg_tool(), "-nostdin", "-hide_banner", "-loglevel", "error",
+                            "-i", str(source), "-map", "0:a:0", "-vn", *audio_options,
                             "-y", str(temporary_audio)], check=True, capture_output=True,
                            text=True, encoding="utf-8", errors="replace")
             audio_source = temporary_audio
