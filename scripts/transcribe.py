@@ -1,6 +1,7 @@
 """Offline folder runner for the locally installed GigaSTT CLI."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,23 +24,38 @@ def stamp(seconds):
 
 def normalize(raw, source):
     words = raw.get("words", [])
+    rendered = []
+    for token in raw.get("text", "").split():
+        if re.sub(r"[^\w]", "", token, flags=re.UNICODE):
+            rendered.append(token)
+        elif rendered and token in {".", ",", "?", "!", ":", ";"}:
+            rendered[-1] += token
+    if len(rendered) != len(words) or any(
+        re.sub(r"[^\w]", "", token, flags=re.UNICODE).casefold() !=
+        re.sub(r"[^\w]", "", word.get("word", ""), flags=re.UNICODE).casefold()
+        for token, word in zip(rendered, words)
+    ):
+        rendered = [word["word"] for word in words]
     segments = []
     current = []
-    for word in words:
-        if current and (word["start"] - current[-1]["end"] > 1.2 or
-                        word["end"] - current[0]["start"] > 12 or
+    for index, word in enumerate(words):
+        if current and (word["start"] - current[-1][1]["end"] > 0.9 or
+                        word["end"] - current[0][1]["start"] > 10 or
                         len(current) >= 32 or
-                        word.get("speaker") != current[-1].get("speaker")):
+                        rendered[index - 1].endswith((".", "?", "!")) or
+                        word.get("speaker") != current[-1][1].get("speaker")):
             segments.append(current)
             current = []
-        current.append(word)
+        current.append((index, word))
     if current:
         segments.append(current)
     result = []
     for group in segments:
-        result.append({"start": group[0]["start"], "end": group[-1]["end"],
-                       "speaker": group[0].get("speaker"),
-                       "text": " ".join(w["word"] for w in group), "words": group})
+        first, last = group[0][1], group[-1][1]
+        result.append({"start": first["start"], "end": last["end"],
+                       "speaker": first.get("speaker"),
+                       "text": " ".join(rendered[i] for i, _ in group),
+                       "words": [word for _, word in group]})
     return {"source": source, "duration": raw.get("duration"),
             "text": raw.get("text", ""), "segments": result}
 
@@ -67,7 +83,8 @@ def process(source):
             print(f"FAILED {source.name}: audio extraction failed: {error}", file=sys.stderr)
             return False
     command = [str(ENGINE), "--offline", "--log-level", "warn", "transcribe", "--model-dir", str(MODELS),
-               "--punctuation", "off", "--itn", "off", "-f", "json", "-o",
+               "--punctuation", "on", "--punct-model-dir", str(MODELS / "punct"),
+               "--itn", "off", "-f", "json", "-o",
                str(raw_file), str(audio_source)]
     print(f"PROCESS {source.name}", flush=True)
     try:
@@ -95,7 +112,7 @@ def process(source):
 
 
 def main():
-    if not ENGINE.is_file() or not MODELS.is_dir():
+    if not ENGINE.is_file() or not (MODELS / "punct" / "rupunct_small_int8.onnx").is_file():
         print("GigaSTT is not installed. Run setup.cmd once online.", file=sys.stderr)
         return 2
     INPUT.mkdir(exist_ok=True)

@@ -19,4 +19,14 @@ tar -xzf $archivePath -C $toolsPath
 if ($LASTEXITCODE -ne 0) { throw 'Cannot extract GigaSTT archive' }
 & (Join-Path $toolsPath 'gigastt.exe') download --model-dir $modelsPath
 if ($LASTEXITCODE -ne 0) { throw 'Cannot download GigaSTT models' }
+$warmupPath = Join-Path $toolsPath 'setup-warmup.wav'
+$warmupJson = Join-Path $toolsPath 'setup-warmup.json'
+try {
+    python -c 'import sys,wave; w=wave.open(sys.argv[1],"wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(bytes(32000)); w.close()' $warmupPath
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot create punctuation warmup audio' }
+    & (Join-Path $toolsPath 'gigastt.exe') transcribe --model-dir $modelsPath --punctuation on --punct-model-dir (Join-Path $modelsPath 'punct') --itn off -f json -o $warmupJson $warmupPath
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot download punctuation model' }
+} finally {
+    Remove-Item -LiteralPath $warmupPath, $warmupJson -ErrorAction SilentlyContinue
+}
 Write-Host 'Installed. Future transcribe.cmd runs use offline mode.'
