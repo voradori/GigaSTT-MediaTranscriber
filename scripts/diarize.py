@@ -4,9 +4,41 @@ import copy
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
+
+
+def ffmpeg_bin_directory():
+    executable = shutil.which("ffmpeg")
+    if executable:
+        return Path(executable).parent
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        winget = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        matches = sorted(
+            winget.glob("Gyan.FFmpeg.Shared_*/ffmpeg-*/bin/ffmpeg.exe"),
+            reverse=True,
+        )
+        if matches:
+            return matches[0].parent
+    return None
+
+
+# TorchCodec loads FFmpeg DLLs while pyannote is being imported.  On Windows,
+# the WinGet installation directory may not reach a newly opened PowerShell yet.
+FFMPEG_BIN = ffmpeg_bin_directory()
+FFMPEG_DLL_DIRECTORY = None
+if FFMPEG_BIN:
+    os.environ["PATH"] = str(FFMPEG_BIN) + os.pathsep + os.environ.get("PATH", "")
+    if os.name == "nt":
+        FFMPEG_DLL_DIRECTORY = os.add_dll_directory(str(FFMPEG_BIN))
 
 import torch
 from pyannote.audio import Pipeline
@@ -24,6 +56,13 @@ RESULT_NAMES = (
     "transcript.speakers.json",
     "transcript.speakers.txt",
 )
+
+
+def media_tool(name):
+    executable = shutil.which(name)
+    if executable:
+        return executable
+    raise RuntimeError(f"{name} is not installed or cannot be found")
 
 
 def stamp(seconds):
@@ -48,7 +87,7 @@ def write_text(path, value):
 def media_duration(path):
     result = subprocess.run(
         [
-            "ffprobe",
+            media_tool("ffprobe"),
             "-v",
             "error",
             "-show_entries",
@@ -69,7 +108,7 @@ def media_duration(path):
 def prepare_audio(source, temporary):
     subprocess.run(
         [
-            "ffmpeg",
+            media_tool("ffmpeg"),
             "-nostdin",
             "-hide_banner",
             "-loglevel",
@@ -307,8 +346,9 @@ def main():
     if needs_pipeline:
         pipeline = Pipeline.from_pretrained(str(MODEL))
         pipeline.to(torch.device(device))
-    try:
-        for transcript_path in sorted(transcripts):
+    failures = []
+    for transcript_path in sorted(transcripts):
+        try:
             process(
                 pipeline,
                 device,
@@ -316,16 +356,25 @@ def main():
                 force=args.force,
                 rerun_model=args.rerun_model,
             )
-    except (
-        OSError,
-        ValueError,
-        KeyError,
-        TypeError,
-        RuntimeError,
-        subprocess.CalledProcessError,
-    ) as error:
-        print(f"FAILED: {error}", file=sys.stderr)
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            RuntimeError,
+            subprocess.CalledProcessError,
+        ) as error:
+            failures.append((transcript_path.parent.name, str(error)))
+            print(f"FAILED {transcript_path.parent.name}: {error}", file=sys.stderr)
+    if failures:
+        print(
+            f"Finished with {len(failures)} failure(s) out of {len(transcripts)} file(s):",
+            file=sys.stderr,
+        )
+        for name, error in failures:
+            print(f"- {name}: {error}", file=sys.stderr)
         return 1
+    print(f"Finished successfully: {len(transcripts)} file(s).", flush=True)
     return 0
 
 
