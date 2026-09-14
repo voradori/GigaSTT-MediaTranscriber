@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT = ROOT / "input"
-OUTPUT = ROOT / "output"
+OUTPUT = ROOT / "output" / "transcripts"
 ENGINE = ROOT / "tools" / "gigastt.exe"
 MODELS = ROOT / "models"
 FORMATS = {".ogg", ".opus", ".mp3", ".wav", ".m4a", ".flac", ".webm"}
@@ -61,7 +61,7 @@ def normalize(raw, source):
 
 
 def process(source):
-    target = OUTPUT / source.name
+    target = OUTPUT / source.relative_to(INPUT)
     if all((target / name).is_file() for name in ("raw.json", "transcript.json", "transcript.txt")):
         try:
             raw = json.loads((target / "raw.json").read_text(encoding="utf-8"))
@@ -128,7 +128,7 @@ def main():
         return 2
     INPUT.mkdir(exist_ok=True)
     OUTPUT.mkdir(exist_ok=True)
-    sources = sorted(p for p in INPUT.iterdir() if p.is_file() and p.suffix.lower() in FORMATS | VIDEO)
+    sources = sorted(p for p in INPUT.rglob("*") if p.is_file() and p.suffix.lower() in FORMATS | VIDEO)
     if not sources:
         print("No supported audio files in input/.")
         return 0
