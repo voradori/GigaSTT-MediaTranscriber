@@ -63,34 +63,40 @@ def normalize(raw, source):
 def process(source):
     target = OUTPUT / source.name
     if all((target / name).is_file() for name in ("raw.json", "transcript.json", "transcript.txt")):
+        try:
+            raw = json.loads((target / "raw.json").read_text(encoding="utf-8"))
+            transcript = json.loads((target / "transcript.json").read_text(encoding="utf-8"))
+            (target / "transcript.txt").read_text(encoding="utf-8")
+            if not isinstance(raw.get("words"), list) or not isinstance(transcript.get("segments"), list):
+                raise ValueError("missing words or segments")
+        except (OSError, ValueError, AttributeError) as error:
+            print(f"BLOCKED existing results need inspection: {target}: {error}", file=sys.stderr)
+            return False
         print(f"SKIP existing: {target}", flush=True)
         return True
-    target.mkdir(parents=True)
+    target.mkdir(parents=True, exist_ok=True)
     raw_file = target / "raw.json"
     started = time.monotonic()
     audio_source = source
     temporary_audio = target / "extracting.m4a"
-    if source.suffix.lower() in VIDEO:
-        if not shutil.which("ffmpeg"):
-            print(f"FAILED {source.name}: ffmpeg is unavailable", file=sys.stderr)
-            return False
-        try:
-            subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
-                            "-i", str(source), "-map", "0:a:0", "-vn", "-c:a", "copy",
-                            "-y", str(temporary_audio)], check=True)
-            audio_source = temporary_audio
-        except subprocess.CalledProcessError as error:
-            print(f"FAILED {source.name}: audio extraction failed: {error}", file=sys.stderr)
-            return False
-    command = [str(ENGINE), "--offline", "--log-level", "warn", "transcribe", "--model-dir", str(MODELS),
-               "--punctuation", "on", "--punct-model-dir", str(MODELS / "punct"),
-               "--itn", "off", "-f", "json", "-o",
-               str(raw_file), str(audio_source)]
     print(f"PROCESS {source.name}", flush=True)
     try:
+        if source.suffix.lower() in VIDEO:
+            if not shutil.which("ffmpeg"):
+                raise RuntimeError("ffmpeg is unavailable")
+            subprocess.run(["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error",
+                            "-i", str(source), "-map", "0:a:0", "-vn", "-c:a", "copy",
+                            "-y", str(temporary_audio)], check=True, capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+            audio_source = temporary_audio
+        command = [str(ENGINE), "--offline", "--log-level", "warn", "transcribe", "--model-dir", str(MODELS),
+                   "--punctuation", "on", "--punct-model-dir", str(MODELS / "punct"),
+                   "--itn", "off", "-f", "json", "-o",
+                   str(raw_file), str(audio_source)]
         environment = os.environ.copy()
         environment.setdefault("RUST_LOG", "warn")
-        subprocess.run(command, check=True, env=environment)
+        subprocess.run(command, check=True, env=environment, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
         raw = json.loads(raw_file.read_text(encoding="utf-8"))
         if not isinstance(raw.get("words"), list):
             raise ValueError("GigaSTT JSON has no words array")
@@ -98,17 +104,22 @@ def process(source):
         (target / "transcript.json").write_text(
             json.dumps(transcript, ensure_ascii=False, indent=2), encoding="utf-8")
         lines = [f"({stamp(s['start'])}) " +
-                 (f"[{s['speaker']}] " if s["speaker"] else "") + s["text"]
+                 (f"[{s['speaker']}] " if s["speaker"] is not None else "") + s["text"]
                  for s in transcript["segments"]]
         (target / "transcript.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-        if temporary_audio.exists():
-            temporary_audio.unlink()
+        error_file = target / "error.txt"
+        if error_file.exists():
+            error_file.unlink()
         print(f"DONE {source.name}: {len(lines)} lines, {time.monotonic()-started:.1f}s", flush=True)
         return True
-    except (subprocess.CalledProcessError, ValueError, KeyError, OSError) as error:
-        (target / "error.txt").write_text(str(error), encoding="utf-8")
-        print(f"FAILED {source.name}: {error}", file=sys.stderr, flush=True)
+    except (subprocess.CalledProcessError, ValueError, KeyError, OSError, RuntimeError) as error:
+        detail = (error.stderr or str(error)).strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
+        (target / "error.txt").write_text(detail + "\n", encoding="utf-8")
+        print(f"FAILED {source.name}: {detail[-1000:]}", file=sys.stderr, flush=True)
         return False
+    finally:
+        if temporary_audio.exists():
+            temporary_audio.unlink()
 
 
 def main():
