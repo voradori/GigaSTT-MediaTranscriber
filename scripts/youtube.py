@@ -1,5 +1,6 @@
 """Download one YouTube selection and process only its audio files."""
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,9 +28,11 @@ def main():
         return 2
     url = sys.argv[-1].strip()
     audio_format = "bestaudio[ext=webm]/bestaudio" if download_only else "bestaudio"
+    js_runtime = ["--js-runtimes", "node"] if shutil.which("node") else []
     with tempfile.TemporaryDirectory(prefix="gigastt-youtube-") as temporary:
         manifest = Path(temporary) / "downloaded.txt"
         download = subprocess.run([PYTHON, "-m", "yt_dlp", "--yes-playlist", "--no-overwrites",
+                                   *js_runtime,
                                    "--print-to-file", "after_move:filepath", str(manifest),
                                    "-f", audio_format, "-o", TEMPLATE, url], cwd=ROOT)
         if download.returncode:
