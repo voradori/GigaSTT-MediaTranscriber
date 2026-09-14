@@ -72,17 +72,19 @@ Used for media handling, including audio extraction from supported video files a
 
 Project: https://ffmpeg.org/
 
-FFmpeg is distributed under its own LGPL/GPL licensing terms depending on the build and enabled components.
+Windows build provider used by `setup.cmd`: https://github.com/BtbN/FFmpeg-Builds
 
-This repository does not redistribute FFmpeg.
+The base setup automatically downloads an LGPL shared Windows build into the local `tools/ffmpeg/` directory. The archive is fetched from the upstream build provider at installation time and is not stored in this repository.
+
+FFmpeg remains subject to its own LGPL/GPL licensing terms depending on the build and enabled components.
 
 ## Node.js
 
-Optionally used by yt-dlp as a JavaScript runtime for sites that require JavaScript-based extraction.
+Installed automatically by `setup.cmd` from the official Node.js distribution and used by yt-dlp as a JavaScript runtime when a site requires JavaScript-based extraction.
 
 Project: https://nodejs.org/
 
-Node.js is an independent project and is not distributed as part of this repository.
+Node.js is downloaded at installation time into the local `tools/` directory, is not stored in this repository and remains subject to its upstream license and notices.
 
 ## Transitive dependencies
 
