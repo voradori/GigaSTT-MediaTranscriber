@@ -9,8 +9,6 @@ $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
     [Environment]::GetEnvironmentVariable('Path', 'Machine')
 
 function Find-FFmpegBin {
-    $command = Get-Command ffmpeg -ErrorAction SilentlyContinue
-    if ($command) { return Split-Path -Parent $command.Source }
     $packages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
     if (Test-Path -LiteralPath $packages) {
         $executable = Get-ChildItem -LiteralPath $packages -Recurse -Filter ffmpeg.exe -File `
@@ -19,6 +17,11 @@ function Find-FFmpegBin {
             Sort-Object FullName -Descending |
             Select-Object -First 1
         if ($executable) { return $executable.DirectoryName }
+    }
+    $command = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if ($command -and (Get-ChildItem -LiteralPath (Split-Path -Parent $command.Source) `
+            -Filter 'avcodec*.dll' -File -ErrorAction SilentlyContinue)) {
+        return Split-Path -Parent $command.Source
     }
     return $null
 }

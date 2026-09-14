@@ -16,9 +16,6 @@ for stream in (sys.stdout, sys.stderr):
 
 
 def ffmpeg_bin_directory():
-    executable = shutil.which("ffmpeg")
-    if executable:
-        return Path(executable).parent
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
         winget = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
@@ -28,6 +25,9 @@ def ffmpeg_bin_directory():
         )
         if matches:
             return matches[0].parent
+    executable = shutil.which("ffmpeg")
+    if executable and list(Path(executable).parent.glob("avcodec*.dll")):
+        return Path(executable).parent
     return None
 
 
@@ -47,7 +47,7 @@ from pyannote.audio.pipelines.utils.hook import ProgressHook
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT = ROOT / "input"
-OUTPUT = ROOT / "output"
+OUTPUT = ROOT / "output" / "transcripts"
 MODEL = ROOT / "models" / "pyannote-speaker-diarization-community-1"
 MODEL_NAME = "pyannote/speaker-diarization-community-1"
 YOUTUBE_ID = re.compile(r"\[([A-Za-z0-9_-]{11})\]")
@@ -142,9 +142,13 @@ def youtube_id(path):
 def find_audio(transcript_path):
     source = json.loads(transcript_path.read_text(encoding="utf-8")).get("source")
     wanted_id = youtube_id(transcript_path.parent)
+    relative = transcript_path.parent.relative_to(OUTPUT)
+    exact = INPUT / relative
+    if exact.is_file():
+        return exact
     candidates = [path for path in INPUT.rglob("*") if path.is_file()]
     if wanted_id:
-        matches = [path for path in candidates if wanted_id in path.name]
+        matches = [path for path in candidates if youtube_id(path) == wanted_id]
     else:
         matches = [path for path in candidates if path.name == source]
     if len(matches) != 1:
@@ -254,21 +258,26 @@ def readable_text(transcript):
 
 
 def valid_existing(target):
-    if not all((target / name).is_file() for name in RESULT_NAMES):
-        return False
     try:
-        diarization = json.loads((target / RESULT_NAMES[0]).read_text(encoding="utf-8"))
-        transcript = json.loads((target / RESULT_NAMES[1]).read_text(encoding="utf-8"))
-        return isinstance(diarization.get("exclusive_diarization"), list) and isinstance(
-            transcript.get("segments"), list
-        )
+        diarization_path, transcript_path, text_path = (target / name for name in RESULT_NAMES)
+        if diarization_path.exists():
+            diarization = json.loads(diarization_path.read_text(encoding="utf-8"))
+            if not isinstance(diarization.get("exclusive_diarization"), list):
+                raise ValueError("invalid diarization result")
+        if transcript_path.exists():
+            transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+            if not isinstance(transcript.get("segments"), list):
+                raise ValueError("invalid speaker transcript")
+        if text_path.exists():
+            text_path.read_text(encoding="utf-8")
+        return all(path.is_file() for path in (diarization_path, transcript_path, text_path))
     except (OSError, ValueError, AttributeError):
         raise RuntimeError(f"existing speaker results need inspection: {target}")
 
 
 def process(pipeline, device, transcript_path, force=False, rerun_model=False):
     target = transcript_path.parent
-    if not force and valid_existing(target):
+    if not (force or rerun_model) and valid_existing(target):
         print(f"SKIP existing: {target}", flush=True)
         return
     transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
@@ -308,8 +317,12 @@ def process(pipeline, device, transcript_path, force=False, rerun_model=False):
         }
         write_json(diarization_path, diarization)
     enriched = add_speakers(transcript, turns)
-    write_json(target / RESULT_NAMES[1], enriched)
-    write_text(target / RESULT_NAMES[2], readable_text(enriched))
+    speaker_json = target / RESULT_NAMES[1]
+    speaker_text = target / RESULT_NAMES[2]
+    if force or rerun_model or not speaker_json.exists():
+        write_json(speaker_json, enriched)
+    if force or rerun_model or not speaker_text.exists():
+        write_text(speaker_text, readable_text(enriched))
     stats = enriched["diarization"]
     speakers = sorted({turn["speaker"] for turn in turns})
     print(
@@ -321,7 +334,8 @@ def process(pipeline, device, transcript_path, force=False, rerun_model=False):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--id", help="process only the result containing this YouTube ID")
+    parser.add_argument("paths", nargs="*", help="files or folders inside input/; default: all transcripts")
+    parser.add_argument("--id", action="append", help="process only these YouTube IDs")
     parser.add_argument("--force", action="store_true", help="replace speaker result files")
     parser.add_argument(
         "--rerun-model", action="store_true", help="run pyannote again instead of reusing diarization.json"
@@ -330,11 +344,17 @@ def main():
     if not MODEL.joinpath("config.yaml").is_file():
         print("Community-1 is not installed in models/.", file=sys.stderr)
         return 2
-    transcripts = [
-        path
-        for path in OUTPUT.rglob("transcript.json")
-        if not args.id or args.id in str(path.parent)
-    ]
+    selected_paths = []
+    for name in args.paths:
+        source = (INPUT / name).resolve()
+        if not source.is_relative_to(INPUT.resolve()) or not source.exists():
+            print(f"input path does not exist inside input/: {name}", file=sys.stderr)
+            return 2
+        selected_paths.append(OUTPUT / source.relative_to(INPUT.resolve()))
+    transcripts = [path for path in OUTPUT.rglob("transcript.json")
+                   if (not args.id or youtube_id(path.parent) in args.id)
+                   and (not selected_paths or any(path.parent == selected or selected in path.parents
+                                                  for selected in selected_paths))]
     if not transcripts:
         print("No matching transcript.json files found.", file=sys.stderr)
         return 2

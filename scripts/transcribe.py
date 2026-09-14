@@ -1,4 +1,5 @@
 """Offline folder runner for the locally installed GigaSTT CLI."""
+import argparse
 import json
 import os
 import re
@@ -7,6 +8,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT = ROOT / "input"
@@ -122,16 +127,36 @@ def process(source):
             temporary_audio.unlink()
 
 
+def select_sources(paths):
+    all_sources = sorted(p for p in INPUT.rglob("*") if p.is_file() and p.suffix.lower() in FORMATS | VIDEO)
+    if not paths:
+        return all_sources
+    selected = set()
+    for name in paths:
+        path = (INPUT / name).resolve()
+        if not path.is_relative_to(INPUT.resolve()) or not path.exists():
+            raise ValueError(f"input path does not exist inside input/: {name}")
+        selected.update(p for p in all_sources if p == path or path in p.parents)
+    return sorted(selected)
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("paths", nargs="*", help="files or folders inside input/; default: all input")
+    args = parser.parse_args()
     if not ENGINE.is_file() or not (MODELS / "punct" / "rupunct_small_int8.onnx").is_file():
         print("GigaSTT is not installed. Run setup.cmd once online.", file=sys.stderr)
         return 2
     INPUT.mkdir(exist_ok=True)
     OUTPUT.mkdir(exist_ok=True)
-    sources = sorted(p for p in INPUT.rglob("*") if p.is_file() and p.suffix.lower() in FORMATS | VIDEO)
+    try:
+        sources = select_sources(args.paths)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
     if not sources:
-        print("No supported audio files in input/.")
-        return 0
+        print("No matching supported audio files in input/.", file=sys.stderr)
+        return 2 if args.paths else 0
     outcomes = [process(source) for source in sources]
     return 0 if all(outcomes) else 1
 
