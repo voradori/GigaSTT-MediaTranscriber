@@ -8,7 +8,23 @@ $modelPath = Join-Path $rootPath 'models\pyannote-speaker-diarization-community-
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
     [Environment]::GetEnvironmentVariable('Path', 'Machine')
 
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+function Find-FFmpegBin {
+    $command = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if ($command) { return Split-Path -Parent $command.Source }
+    $packages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+    if (Test-Path -LiteralPath $packages) {
+        $executable = Get-ChildItem -LiteralPath $packages -Recurse -Filter ffmpeg.exe -File `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like '*Gyan.FFmpeg.Shared_*' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($executable) { return $executable.DirectoryName }
+    }
+    return $null
+}
+
+$ffmpegBin = Find-FFmpegBin
+if (-not $ffmpegBin) {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         throw 'FFmpeg Shared is required. Install it and run setup-diarization.cmd again.'
     }
@@ -17,7 +33,10 @@ if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot install FFmpeg Shared' }
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
         [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $ffmpegBin = Find-FFmpegBin
+    if (-not $ffmpegBin) { throw 'FFmpeg Shared was installed but cannot be found' }
 }
+$env:Path = $ffmpegBin + ';' + $env:Path
 
 if (-not (Test-Path -LiteralPath $pythonPath)) {
     python -m venv $venvPath
