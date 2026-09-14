@@ -1,0 +1,29 @@
+# Local recordings and generated results
+/input/
+/output/
+/tmp/
+/temp/
+/logs/
+
+# Model and tool caches
+/models/
+/cache/
+/.cache/
+/DockerCache/
+/tools/
+
+# Local configuration and credentials
+.env
+.env.*
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Python / editors / operating system
+__pycache__/
+*.py[cod]
+.venv/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
