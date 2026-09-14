@@ -1,4 +1,4 @@
-# GigaSTT Video & Audio Transcriber
+# GigaSTT Media Transcriber
 
 Локальный инструмент для расшифровки русскоязычных аудио и видео на Windows. Использует [GigaSTT](https://github.com/ekhodzitsky/gigastt) для распознавания речи, умеет обрабатывать локальные файлы и YouTube-видео/плейлисты, а также опционально добавлять разделение говорящих через [pyannote Community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).
 
