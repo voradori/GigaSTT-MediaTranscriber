@@ -1,4 +1,5 @@
-"""Download one YouTube selection and process only its video IDs."""
+"""Download one YouTube selection and process only its audio files."""
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,8 +17,13 @@ TEMPLATE = "input/%(playlist_title|YouTube videos)s/%(title).100B [%(id)s].%(ext
 
 def main():
     download_only = len(sys.argv) == 3 and sys.argv[1] == "--download-only"
-    if len(sys.argv) != (3 if download_only else 2) or not sys.argv[-1].strip():
-        print("Usage: youtube.cmd URL", file=sys.stderr)
+    diarize = len(sys.argv) == 3 and sys.argv[1] == "--diarize"
+    if len(sys.argv) != (3 if download_only or diarize else 2) or not sys.argv[-1].strip():
+        print("Usage: youtube.cmd URL or youtube_dr.cmd URL", file=sys.stderr)
+        return 2
+    if diarize and (not VENV_PYTHON.is_file() or not (ROOT / "models" /
+            "pyannote-speaker-diarization-community-1" / "config.yaml").is_file()):
+        print("Diarization is not installed. Run setup-diarization.cmd first.", file=sys.stderr)
         return 2
     url = sys.argv[-1].strip()
     audio_format = "bestaudio[ext=webm]/bestaudio" if download_only else "bestaudio"
@@ -45,12 +51,10 @@ def main():
     result = subprocess.run([sys.executable, str(ROOT / "scripts" / "transcribe.py"), *selected], cwd=ROOT)
     if result.returncode:
         return result.returncode
-    if (ROOT / "models" / "pyannote-speaker-diarization-community-1" / "config.yaml").is_file():
-        if not VENV_PYTHON.is_file():
-            print("Diarization model exists but .venv is missing.", file=sys.stderr)
-            return 2
+    if diarize:
         result = subprocess.run([str(VENV_PYTHON), str(ROOT / "scripts" / "diarize.py"),
-                                 *selected], cwd=ROOT)
+                                 *selected], cwd=ROOT,
+                                env={**os.environ, "PYANNOTE_METRICS_ENABLED": "0"})
         return result.returncode
     return 0
 

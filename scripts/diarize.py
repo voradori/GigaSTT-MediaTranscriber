@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from render_transcript import render
 
 
 for stream in (sys.stdout, sys.stderr):
@@ -53,8 +54,8 @@ MODEL_NAME = "pyannote/speaker-diarization-community-1"
 YOUTUBE_ID = re.compile(r"\[([A-Za-z0-9_-]{11})\]")
 RESULT_NAMES = (
     "diarization.json",
-    "transcript.speakers.json",
-    "transcript.speakers.txt",
+    "transcript.json",
+    "transcript.txt",
 )
 
 
@@ -250,11 +251,7 @@ def make_segment(group, speaker):
 
 
 def readable_text(transcript):
-    lines = []
-    for segment in transcript["segments"]:
-        speaker = segment.get("speaker") or "UNKNOWN"
-        lines.append(f"({stamp(segment['start'])}) [{speaker}] {segment['text']}")
-    return "\n".join(lines) + "\n"
+    return render(transcript)
 
 
 def valid_existing(target):
@@ -267,12 +264,13 @@ def valid_existing(target):
         if transcript_path.exists():
             transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
             if not isinstance(transcript.get("segments"), list):
-                raise ValueError("invalid speaker transcript")
+                raise ValueError("invalid transcript")
         if text_path.exists():
             text_path.read_text(encoding="utf-8")
-        return all(path.is_file() for path in (diarization_path, transcript_path, text_path))
+        return diarization_path.is_file() and transcript_path.is_file() and text_path.is_file() \
+            and isinstance(transcript.get("diarization"), dict)
     except (OSError, ValueError, AttributeError):
-        raise RuntimeError(f"existing speaker results need inspection: {target}")
+        raise RuntimeError(f"existing results need inspection: {target}")
 
 
 def process(pipeline, device, transcript_path, force=False, rerun_model=False):
@@ -281,6 +279,8 @@ def process(pipeline, device, transcript_path, force=False, rerun_model=False):
         print(f"SKIP existing: {target}", flush=True)
         return
     transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    if rerun_model and transcript.get("speaker_names"):
+        raise RuntimeError("remove or review speaker_names before rerunning the model; voice IDs may change")
     audio = find_audio(transcript_path)
     audio_seconds = media_duration(audio)
     transcript_seconds = float(transcript.get("duration") or 0.0)
@@ -317,12 +317,22 @@ def process(pipeline, device, transcript_path, force=False, rerun_model=False):
         }
         write_json(diarization_path, diarization)
     enriched = add_speakers(transcript, turns)
-    speaker_json = target / RESULT_NAMES[1]
-    speaker_text = target / RESULT_NAMES[2]
-    if force or rerun_model or not speaker_json.exists():
-        write_json(speaker_json, enriched)
-    if force or rerun_model or not speaker_text.exists():
-        write_text(speaker_text, readable_text(enriched))
+    old_json = target / "transcript.speakers.json"
+    old_text = target / "transcript.speakers.txt"
+    remove_legacy = False
+    if old_json.is_file() and old_text.is_file():
+        try:
+            remove_legacy = (json.loads(old_json.read_text(encoding="utf-8")) == enriched
+                             and old_text.read_text(encoding="utf-8") == readable_text(enriched))
+        except (OSError, ValueError):
+            pass
+    write_json(transcript_path, enriched)
+    write_text(target / RESULT_NAMES[2], readable_text(enriched))
+    if remove_legacy:
+        old_json.unlink()
+        old_text.unlink()
+    elif old_json.exists() or old_text.exists():
+        print(f"KEEP differing legacy speaker files for review: {target}", flush=True)
     stats = enriched["diarization"]
     speakers = sorted({turn["speaker"] for turn in turns})
     print(
@@ -336,7 +346,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="*", help="files or folders inside input/; default: all transcripts")
     parser.add_argument("--id", action="append", help="process only these YouTube IDs")
-    parser.add_argument("--force", action="store_true", help="replace speaker result files")
+    parser.add_argument("--force", action="store_true", help="rebuild transcript from saved diarization")
     parser.add_argument(
         "--rerun-model", action="store_true", help="run pyannote again instead of reusing diarization.json"
     )
