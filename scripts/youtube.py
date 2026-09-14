@@ -11,8 +11,6 @@ for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parents[1]
-VENV_PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
-PYTHON = str(VENV_PYTHON if VENV_PYTHON.is_file() else Path(sys.executable))
 TEMPLATE = "input/%(playlist_title|YouTube videos)s/%(title).100B [%(id)s].%(ext)s"
 
 
@@ -22,7 +20,7 @@ def main():
     if len(sys.argv) != (3 if download_only or diarize else 2) or not sys.argv[-1].strip():
         print("Usage: youtube.cmd URL or youtube_dr.cmd URL", file=sys.stderr)
         return 2
-    if diarize and (not VENV_PYTHON.is_file() or not (ROOT / "models" /
+    if diarize and (not (ROOT / "models" /
             "pyannote-speaker-diarization-community-1" / "config.yaml").is_file()):
         print("Diarization is not installed. Run setup-diarization.cmd first.", file=sys.stderr)
         return 2
@@ -31,7 +29,7 @@ def main():
     js_runtime = ["--js-runtimes", "node"] if shutil.which("node") else []
     with tempfile.TemporaryDirectory(prefix="gigastt-youtube-") as temporary:
         manifest = Path(temporary) / "downloaded.txt"
-        download = subprocess.run([PYTHON, "-m", "yt_dlp", "--yes-playlist", "--no-overwrites",
+        download = subprocess.run([sys.executable, "-m", "yt_dlp", "--yes-playlist", "--no-overwrites",
                                    *js_runtime,
                                    "--print-to-file", "after_move:filepath", str(manifest),
                                    "-f", audio_format, "-o", TEMPLATE, url], cwd=ROOT)
@@ -55,7 +53,7 @@ def main():
     if result.returncode:
         return result.returncode
     if diarize:
-        result = subprocess.run([str(VENV_PYTHON), str(ROOT / "scripts" / "diarize.py"),
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "diarize.py"),
                                  *selected], cwd=ROOT,
                                 env={**os.environ, "PYANNOTE_METRICS_ENABLED": "0"})
         return result.returncode

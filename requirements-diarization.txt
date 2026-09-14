@@ -1,3 +1,2 @@
 pyannote.audio==4.0.7
 huggingface-hub==1.31.0
-yt-dlp[default]==2026.8.19

@@ -4,6 +4,11 @@ $venvPath = Join-Path $rootPath '.venv'
 $pythonPath = Join-Path $venvPath 'Scripts\python.exe'
 $hfPath = Join-Path $venvPath 'Scripts\hf.exe'
 $modelPath = Join-Path $rootPath 'models\pyannote-speaker-diarization-community-1'
+if (-not (Test-Path -LiteralPath $pythonPath)) {
+    throw 'Run setup.cmd first to create the shared .venv.'
+}
+& $pythonPath -m yt_dlp --version
+if ($LASTEXITCODE -ne 0) { throw 'Run setup.cmd first to install the shared YouTube tools.' }
 
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
     [Environment]::GetEnvironmentVariable('Path', 'Machine')
@@ -41,22 +46,24 @@ if (-not $ffmpegBin) {
 }
 $env:Path = $ffmpegBin + ';' + $env:Path
 
-if (-not (Test-Path -LiteralPath $pythonPath)) {
-    python -m venv $venvPath
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot create .venv' }
-}
-
-& $pythonPath -m pip install --upgrade pip
-if ($LASTEXITCODE -ne 0) { throw 'Cannot update pip' }
 & $pythonPath -m pip install --index-url https://download.pytorch.org/whl/cu130 `
     'torch==2.14.0+cu130' 'torchaudio==2.11.0+cu130' 'torchcodec==0.16.0+cu130'
 if ($LASTEXITCODE -ne 0) { throw 'Cannot install PyTorch with CUDA support' }
 & $pythonPath -m pip install -r (Join-Path $rootPath 'requirements-diarization.txt')
 if ($LASTEXITCODE -ne 0) { throw 'Cannot install diarization packages' }
+$env:PYANNOTE_METRICS_ENABLED = '0'
+& $pythonPath -c "import torch, torchcodec, pyannote.audio; print('CUDA:', torch.cuda.is_available()); print('Pyannote:', pyannote.audio.__version__)"
+if ($LASTEXITCODE -ne 0) { throw 'Diarization installation check failed' }
 
 if (-not (Test-Path -LiteralPath (Join-Path $modelPath 'config.yaml'))) {
-    & $hfPath auth whoami *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $loggedIn = $false
+    try {
+        & $hfPath auth whoami *> $null
+        $loggedIn = ($LASTEXITCODE -eq 0)
+    } catch {
+        $loggedIn = $false
+    }
+    if (-not $loggedIn) {
         Write-Host 'Hugging Face login is required. Paste a read token when prompted.'
         & $hfPath auth login
         if ($LASTEXITCODE -ne 0) { throw 'Hugging Face login failed' }
@@ -64,8 +71,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $modelPath 'config.yaml'))) {
     & $hfPath download pyannote/speaker-diarization-community-1 --local-dir $modelPath
     if ($LASTEXITCODE -ne 0) { throw 'Cannot download Community-1' }
 }
-
-$env:PYANNOTE_METRICS_ENABLED = '0'
-& $pythonPath -c "import torch, torchcodec, pyannote.audio; print('CUDA:', torch.cuda.is_available()); print('Pyannote:', pyannote.audio.__version__)"
-if ($LASTEXITCODE -ne 0) { throw 'Diarization installation check failed' }
+$env:HF_HUB_OFFLINE = '1'
+& $pythonPath -c "from pyannote.audio import Pipeline; import sys; Pipeline.from_pretrained(sys.argv[1]); print('Local Community-1 model loaded')" $modelPath
+if ($LASTEXITCODE -ne 0) { throw 'Local Community-1 model check failed' }
 Write-Host 'Diarization is installed. Run diarize.cmd to process matching audio and transcripts.'

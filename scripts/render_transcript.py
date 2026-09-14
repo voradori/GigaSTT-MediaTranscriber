@@ -34,7 +34,7 @@ def render(transcript):
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python scripts/render_transcript.py output/transcripts/.../transcript.json", file=sys.stderr)
+        print("Usage: .venv\\Scripts\\python.exe scripts/render_transcript.py output/transcripts/.../transcript.json", file=sys.stderr)
         return 2
     path = Path(sys.argv[1]).resolve()
     root = Path(__file__).resolve().parents[1] / "output" / "transcripts"

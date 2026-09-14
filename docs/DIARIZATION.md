@@ -24,13 +24,13 @@
 
 1. На странице Community-1 войти в Hugging Face и принять условия доступа к модели.
 2. Создать токен Hugging Face с правом чтения. Никому его не отправлять и в Git не добавлять.
-3. Из корня проекта запустить:
+3. Сначала выполнить `setup.cmd`, который создаёт общую `.venv` и устанавливает GigaSTT с YouTube-инструментами. Затем из корня проекта запустить:
 
    ```powershell
    .\setup-diarization.cmd
    ```
 
-4. Если появится запрос авторизации, вставить токен в открывшийся PowerShell. Установщик создаст `.venv`, поставит CUDA-версии PyTorch, pyannote, yt-dlp и FFmpeg Shared, затем скачает модель в `models/pyannote-speaker-diarization-community-1`.
+4. Если появится запрос авторизации, вставить токен в открывшийся PowerShell. Установщик дополнит ту же `.venv` CUDA-версиями PyTorch и pyannote, при необходимости поставит FFmpeg Shared, затем скачает модель в `models/pyannote-speaker-diarization-community-1`.
 5. Успешная проверка в конце должна показать версию pyannote и `CUDA: True` на компьютере с подходящей NVIDIA-видеокартой.
 
 Установщик и рабочий скрипт сами находят FFmpeg, установленный WinGet, даже если новый путь ещё не появился в текущем PowerShell. Предупреждение Windows о файле `PSReadLine.format.ps1xml` относится к подписанному модулю Microsoft; при однократном запуске можно выбрать `R`.
