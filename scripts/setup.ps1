@@ -73,8 +73,13 @@ $ffmpegBin = Get-ChildItem -LiteralPath $ffmpegRoot -Recurse -Filter ffmpeg.exe 
     } | Select-Object -First 1
 if (-not $ffmpegBin) {
     $release = Invoke-RestMethod 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest'
-    $name = 'ffmpeg-n9.0-latest-win64-lgpl-shared-9.0.zip'
-    $asset = $release.assets | Where-Object name -eq $name | Select-Object -First 1
+    $asset = $release.assets |
+        Where-Object { $_.name -match '^ffmpeg-n(\d+\.\d+)-latest-win64-lgpl-shared-\1\.zip$' } |
+        Sort-Object -Property @{ Expression = {
+            [version]([regex]::Match($_.name, '^ffmpeg-n(\d+\.\d+)').Groups[1].Value)
+        } } -Descending |
+        Select-Object -First 1
+    $name = if ($asset) { $asset.name } else { 'stable Windows x64 LGPL shared FFmpeg archive' }
     if (-not $asset -or $asset.digest -notmatch '^sha256:[a-fA-F0-9]{64}$') {
         throw "FFmpeg release asset or SHA256 digest missing: $name"
     }
