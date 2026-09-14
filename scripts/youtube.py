@@ -26,11 +26,18 @@ def main():
         return 2
     url = sys.argv[-1].strip()
     audio_format = "bestaudio[ext=webm]/bestaudio" if download_only else "bestaudio"
-    js_runtime = ["--js-runtimes", "node"] if shutil.which("node") else []
+    local_nodes = sorted((ROOT / "tools" / "node").glob("node-*/node.exe"), reverse=True)
+    node = str(local_nodes[0]) if local_nodes else shutil.which("node")
+    js_runtime = ["--js-runtimes", f"node:{node}"] if node else []
+    ffmpeg_root = ROOT / "tools" / "ffmpeg"
+    local_ffmpeg = [ffmpeg_root / "ffmpeg.exe", ffmpeg_root / "bin" / "ffmpeg.exe"]
+    local_ffmpeg.extend(sorted(ffmpeg_root.glob("ffmpeg-*/bin/ffmpeg.exe"), reverse=True))
+    ffmpeg_location = next((["--ffmpeg-location", str(path.parent)] for path in local_ffmpeg
+                            if path.is_file()), [])
     with tempfile.TemporaryDirectory(prefix="gigastt-youtube-") as temporary:
         manifest = Path(temporary) / "downloaded.txt"
         download = subprocess.run([sys.executable, "-m", "yt_dlp", "--yes-playlist", "--no-overwrites",
-                                   *js_runtime,
+                                   *js_runtime, *ffmpeg_location,
                                    "--print-to-file", "after_move:filepath", str(manifest),
                                    "-f", audio_format, "-o", TEMPLATE, url], cwd=ROOT)
         if download.returncode:

@@ -14,19 +14,30 @@ $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' +
     [Environment]::GetEnvironmentVariable('Path', 'Machine')
 
 function Find-FFmpegBin {
+    $localRoot = Join-Path $rootPath 'tools\ffmpeg'
+    $local = Get-ChildItem -LiteralPath $localRoot -Recurse -Filter ffmpeg.exe -File `
+        -ErrorAction SilentlyContinue | Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.DirectoryName 'ffprobe.exe')) -and
+            (Get-ChildItem -LiteralPath $_.DirectoryName -Filter 'avcodec*.dll' -File)
+        } | Select-Object -First 1
+    if ($local) { return $local.DirectoryName }
+    $command = Get-Command ffmpeg -ErrorAction SilentlyContinue
+    if ($command -and
+        (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $command.Source) 'ffprobe.exe')) -and
+        (Get-ChildItem -LiteralPath (Split-Path -Parent $command.Source) `
+            -Filter 'avcodec*.dll' -File -ErrorAction SilentlyContinue)) {
+        return Split-Path -Parent $command.Source
+    }
     $packages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
     if (Test-Path -LiteralPath $packages) {
         $executable = Get-ChildItem -LiteralPath $packages -Recurse -Filter ffmpeg.exe -File `
             -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -like '*Gyan.FFmpeg.Shared_*' } |
+            Where-Object { $_.FullName -like '*Gyan.FFmpeg.Shared_*' -and
+                (Test-Path -LiteralPath (Join-Path $_.DirectoryName 'ffprobe.exe')) -and
+                (Get-ChildItem -LiteralPath $_.DirectoryName -Filter 'avcodec*.dll' -File) } |
             Sort-Object FullName -Descending |
             Select-Object -First 1
         if ($executable) { return $executable.DirectoryName }
-    }
-    $command = Get-Command ffmpeg -ErrorAction SilentlyContinue
-    if ($command -and (Get-ChildItem -LiteralPath (Split-Path -Parent $command.Source) `
-            -Filter 'avcodec*.dll' -File -ErrorAction SilentlyContinue)) {
-        return Split-Path -Parent $command.Source
     }
     return $null
 }

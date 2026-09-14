@@ -17,10 +17,13 @@ for stream in (sys.stdout, sys.stderr):
 
 
 def ffmpeg_bin_directory():
-    local = sorted((Path(__file__).resolve().parents[1] / "tools" / "ffmpeg").glob(
-        "ffmpeg-*/bin/ffmpeg.exe"), reverse=True)
-    if local:
-        return local[0].parent
+    folder = Path(__file__).resolve().parents[1] / "tools" / "ffmpeg"
+    candidates = [folder / "ffmpeg.exe", folder / "bin" / "ffmpeg.exe"]
+    candidates.extend(sorted(folder.glob("ffmpeg-*/bin/ffmpeg.exe"), reverse=True))
+    for path in candidates:
+        if (path.is_file() and (path.parent / "ffprobe.exe").is_file()
+                and list(path.parent.glob("avcodec*.dll"))):
+            return path.parent
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
         winget = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
@@ -28,10 +31,12 @@ def ffmpeg_bin_directory():
             winget.glob("Gyan.FFmpeg.Shared_*/ffmpeg-*/bin/ffmpeg.exe"),
             reverse=True,
         )
-        if matches:
-            return matches[0].parent
+        for path in matches:
+            if (path.parent / "ffprobe.exe").is_file() and list(path.parent.glob("avcodec*.dll")):
+                return path.parent
     executable = shutil.which("ffmpeg")
-    if executable and list(Path(executable).parent.glob("avcodec*.dll")):
+    if (executable and (Path(executable).parent / "ffprobe.exe").is_file()
+            and list(Path(executable).parent.glob("avcodec*.dll"))):
         return Path(executable).parent
     return None
 

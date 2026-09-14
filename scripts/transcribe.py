@@ -23,7 +23,11 @@ VIDEO = {".mp4", ".mkv"}
 
 
 def ffmpeg_tool():
-    local = sorted((ROOT / "tools" / "ffmpeg").glob("ffmpeg-*/bin/ffmpeg.exe"), reverse=True)
+    folder = ROOT / "tools" / "ffmpeg"
+    for path in (folder / "ffmpeg.exe", folder / "bin" / "ffmpeg.exe"):
+        if path.is_file():
+            return str(path)
+    local = sorted(folder.glob("ffmpeg-*/bin/ffmpeg.exe"), reverse=True)
     if local:
         return str(local[0])
     executable = shutil.which("ffmpeg")
